@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  WORKER
+  OWNER
+}
+
+enum ScheduleLevel {
+  MONTH
+  WEEK
+  DAY
+}
+
+enum ScheduleStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+  DELAYED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TaskType {
+  OWNER_QUESTION
+  SITE_REQUEST
+}
+
+enum TaskStatus {
+  QUESTIONING
+  ANSWERED
+  RESOLVED
+  UNCHECKED
+  IN_PROGRESS
+  WAITING
+  COMPLETED
+  RETURNED
+}
+
+enum Priority {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model User {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  passwordHash     String
+  name             String
+  role             Role
+  trade            String?
+  active           Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+  ownedProjects    Project[]        @relation("ProjectOwner")
+  memberships      ProjectMember[]
+  reports          Report[]         @relation("ReportAuthor")
+  approvals        Report[]         @relation("ReportApprover")
+  createdTasks     Task[]           @relation("TaskCreator")
+  assignedTasks    Task[]           @relation("TaskAssignee")
+  taskMessages     TaskMessage[]
+  scheduleChanges  ScheduleChange[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+}
+
+model Project {
+  id             String         @id @default(cuid())
+  code           String         @unique
+  name           String
+  address        String
+  ownerId        String
+  owner          User           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  startDate      DateTime
+  plannedEndDate DateTime
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+  members        ProjectMember[]
+  schedules      ScheduleItem[]
+  reports        Report[]
+  tasks          Task[]
+  changes        ScheduleChange[]
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+}
+
+model ScheduleItem {
+  id               String          @id @default(cuid())
+  projectId        String
+  project          Project         @relation(fields: [projectId], references: [id])
+  parentId         String?
+  parent           ScheduleItem?   @relation("ScheduleTree", fields: [parentId], references: [id])
+  children         ScheduleItem[]  @relation("ScheduleTree")
+  level            ScheduleLevel
+  title            String
+  description      String?
+  trade            String?
+  originalStart    DateTime
+  originalEnd      DateTime
+  currentStart     DateTime
+  currentEnd       DateTime
+  progress         Int             @default(0)
+  status           ScheduleStatus  @default(NOT_STARTED)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+  reports          Report[]
+  tasks            Task[]
+  changes          ScheduleChange[]
+}
+
+model ScheduleChange {
+  id             String       @id @default(cuid())
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id])
+  scheduleItemId String
+  scheduleItem   ScheduleItem @relation(fields: [scheduleItemId], references: [id])
+  changedById    String
+  changedBy      User         @relation(fields: [changedById], references: [id])
+  previousStart  DateTime
+  previousEnd    DateTime
+  newStart       DateTime
+  newEnd         DateTime
+  reason         String
+  createdAt      DateTime     @default(now())
+}
+
+model Report {
+  id              String         @id @default(cuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id])
+  scheduleItemId  String
+  scheduleItem    ScheduleItem   @relation(fields: [scheduleItemId], references: [id])
+  authorId        String
+  author          User           @relation("ReportAuthor", fields: [authorId], references: [id])
+  comment         String
+  progress        Int
+  capturedAt      DateTime
+  approvalStatus  ApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedBy      User?          @relation("ReportApprover", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+  photos          Photo[]
+  tasks           Task[]
+}
+
+model Photo {
+  id           String   @id @default(cuid())
+  reportId     String?
+  report       Report?  @relation(fields: [reportId], references: [id])
+  taskId       String?
+  task         Task?    @relation(fields: [taskId], references: [id])
+  storageKey   String   @unique
+  mimeType     String
+  byteSize     Int
+  originalName String
+  capturedAt   DateTime
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+}
+
+model Task {
+  id                String        @id @default(cuid())
+  type              TaskType
+  projectId         String
+  project           Project       @relation(fields: [projectId], references: [id])
+  scheduleItemId    String?
+  scheduleItem      ScheduleItem? @relation(fields: [scheduleItemId], references: [id])
+  targetReportId    String?
+  targetReport      Report?       @relation(fields: [targetReportId], references: [id])
+  creatorId         String
+  creator           User          @relation("TaskCreator", fields: [creatorId], references: [id])
+  assignedToId      String?
+  assignedTo        User?         @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  title             String
+  content           String
+  trade             String?
+  priority          Priority      @default(NORMAL)
+  status            TaskStatus
+  dueAt             DateTime?
+  unreadForAdmin    Boolean       @default(true)
+  unreadForAssignee Boolean       @default(false)
+  unreadForCreator  Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+  messages          TaskMessage[]
+  photos            Photo[]
+}
+
+model TaskMessage {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  beforeJson String?
+  afterJson  String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}
