@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "いえ進捗｜住宅工程管理",
-  description: "現場・元請け・施主をつなぐ住宅向け工程進捗管理",
+  title: { default: "Auri+｜住まいができるまでを、ひとつにつなぐ", template: "%s｜Auri+" },
+  description: "施工会社・現場担当者・施主をつなぐ、上質な住宅施工進捗共有サービス Auri+",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
